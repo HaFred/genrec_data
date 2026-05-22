@@ -234,9 +234,16 @@ Price-NDCG@10           0.410     0.478    +0.068   +16.6%
 **K in NDCG@K**: K = beam_width = 32, matching the rollout config's `stage2_beam_size`. During training, the beam search produces 32 ranked items; NDCG is computed over all 32 positions. During eval, K values of 1, 5, 10, and 32 are reported.
 
 **Cross-domain funnel scoring**: The engagement funnel is computed at the user level (which video signals did this user exhibit), while rewards are for product items. For the Ranked Product task, funnel scores are assigned per product item as follows:
-- If the product is in `target_goods_pid` (purchased): funnel = 1.0 (level 6)
-- If the product is in `hist_goods_pid` but not purchased: funnel = 0.1 (level 1, "viewed")
-- The user's video engagement levels inform the overall user engagement profile but are not per-product-item signals. The funnel hierarchy is computed as maximum across all item-specific signals.
+- If the product is in `target_goods_pid` (purchased/converted): funnel = 1.0 (level 6, CVR)
+- If the product is in `hist_goods_pid` but NOT in target_goods_pid (viewed but not purchased): funnel = 0.1 (level 1, CTR)
+- The user's video engagement levels inform the overall user engagement profile but are not per-product-item signals.
+
+**rank_labels must include BOTH viewed and purchased items** so the NDCG reward captures the full CTR×CVR×Price funnel. Items are sorted by price×funnel descending. IDCG represents the ideal ordering where purchased items (funnel=1.0) rank above merely-viewed items (funnel=0.1), both weighted by price. This encodes the GMV definition:
+```
+GMV_approx = DCG where relevance = funnel × log(1+price)/log(1+max_price)
+           = sum over CTR items (0.1 × price_weight) + sum over CVR items (1.0 × price_weight)
+           ∝ CTR × CVR × Price
+```
 
 **Price tier thresholds**: Computed from the full item price distribution. Low: 0-33rd percentile, Med: 33rd-67th percentile, High: 67th-100th percentile. These are computed once globally from `item_price_lookup.parquet` and stored as absolute thresholds.
 

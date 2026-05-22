@@ -241,15 +241,39 @@ def main():
         task_prompt = random.choice(TASK_PROMPTS)
 
         # 4. Build target: ranked list of product SIDs sorted by price×funnel
+        # Include BOTH viewed (hist_goods_pid, CTR) and purchased (target_goods_pid, CVR)
+        # items so the NDCG reward captures CTR × CVR × Price.
         user_eng = eng_map.get(uid, {})
+
+        # Collect all candidate items: viewed + purchased
+        target_set = set(target_pids)
+        all_candidate_pids: list[int] = list(target_pids[:TARGET_MAX_LEN])
+
+        # Add viewed-but-not-purchased items (max 10 more to keep rank_labels ~20)
+        if hist_goods is not None and hasattr(hist_goods, "__iter__") and not isinstance(hist_goods, float):
+            extra_count = 0
+            for pid in reversed(hist_goods):
+                pid_int = int(pid)
+                if pid_int not in target_set and pid_int in product_pid2sid:
+                    all_candidate_pids.append(pid_int)
+                    extra_count += 1
+                    if extra_count >= TARGET_MAX_LEN:
+                        break
 
         target_entries = []
         filtered_count = 0
-        for pid in target_pids[:TARGET_MAX_LEN]:
-            # Get SID
+        for pid in all_candidate_pids:
             if pid not in product_pid2sid:
                 filtered_count += 1
                 continue
+
+            # Funnel: 1.0 if purchased (CVR), 0.1 if only viewed (CTR)
+            if pid in target_set:
+                funnel = 1.0   # purchased / converted
+            else:
+                funnel = 0.1   # viewed but not purchased
+            # Use any higher funnel from engagement data
+            funnel = max(funnel, user_eng.get(pid, 0.0))
 
             # Get price: 3-tier fallback
             if pid in price_map:
@@ -257,10 +281,6 @@ def main():
             else:
                 cat = cat_map.get(pid, "")
                 price = cat_price_map.get(cat, global_median)
-
-            funnel = user_eng.get(pid, 0.0)
-            if pid in target_pids:
-                funnel = max(funnel, 1.0)  # Target goods → purchase level
 
             pw = get_price_weight(price, global_max)
             relevance = funnel * pw
