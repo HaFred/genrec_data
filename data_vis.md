@@ -16,6 +16,63 @@ The pipeline produces 3 task types from OpenOneRec-RecIF (162K users), adding pr
 - `outputs/user_item_engagement.parquet` — 12.5M user×item rows with funnel scores (0.1–1.0)
 - `outputs/price_stats.json` — global price distribution, tier thresholds
 
+
+## Data Fabrication
+
+The `rl_data_enriched/` parquets are produced by a 3-stage pipeline, invoked by `genrec_data/run_pipeline.sh`:
+
+```
+Source Dataset (162K users)
+    │
+    ▼
+Stage 1: Signal Extraction ─────────────────────────────
+  scripts/01_build_price_lookup.py
+    → Parse shopping cart JSON from 88K user profiles
+    → Extract 57,730 real product prices (¥0.01–¥9,999.90)
+    → Compute 2,053 category-median prices as fallback
+    → Output: item_price_lookup.parquet, category_price_lookup.parquet, price_stats.json
+
+  scripts/02_compute_engagement_scores.py
+    → Scan video/ad/goods history + target labels per user
+    → Assign funnel_score per user×item: 0.1 (viewed) to 1.0 (purchased)
+    → Output: user_item_engagement.parquet (12.5M rows)
+
+  scripts/03_extract_cot_samples.py
+    → Filter reco_cot non-null rows (3,646 samples)
+    → Parse CoT reasoning chains, enrich with price tier
+    → Output: cot_samples.parquet
+    │
+    ▼
+Stage 2: Dataset Assembly ──────────────────────────────
+  scripts/04_build_ranked_product_task.py
+    → Combines video history + product history + price tier into prompts
+    → Builds rank_labels with BOTH viewed (funnel=0.1, CTR) and purchased
+      (funnel=1.0, CVR) items, sorted by price × funnel descending
+    → Output: ranked_product.parquet (115,745 samples)
+
+  scripts/05_build_purchase_prediction_task.py
+    → Binary purchase prediction with candidate product price
+    → Output: purchase_pred.parquet (55,000 samples)
+
+  scripts/06_build_cot_reasoning_task.py
+    → Enriches CoT samples with price context from user profiles
+    → Output: cot_reason.parquet (3,646 samples)
+    │
+    ▼
+Stage 3: Merge & Split ─────────────────────────────────
+  scripts/07_merge_and_split.py
+    → Merges all 3 task parquets
+    → Stratified split: train (170K), test (3K), eval_gmv (1K)
+    → Output: rl_data_enriched/{train,test,eval_gmv}.parquet
+```
+
+To regenerate after code changes, run from `genrec_data/`:
+```bash
+bash run_pipeline.sh          # full pipeline (all stages)
+bash run_pipeline.sh --skip-stage1  # only stages 2+3
+```
+
+
 **Final** (GRPO training inputs):
 
 
