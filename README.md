@@ -4,6 +4,8 @@
 
 The pipeline produces 3 task types from OpenOneRec-RecIF (162K users), adding price × engagement-funnel reward annotations for GMV-targeting RLVR.
 
+* Sample pieces of [thinking results](https://github.com/HaFred/vllm-gr-v2/blob/optimizing/gr_native_scheduling/benchmarks/golden/debug_june26_0.5cudamemutilization_nbeams32_5numb/vllm-gr_api-vllm-gr_runtime-openonerec_openonerec_8b_pro_product_5numb_bs32_stage1only-0/bench.log#L154)
+
 ## Data Sources
 
 **Input** (OpenOneRec-RecIF):
